@@ -3,8 +3,8 @@ package httpv
 import (
 	"encoding/base64"
 	"errors"
+	"net/http"
 
-	"github.com/NSkelsey/net/http"
 	"github.com/conformal/btcec"
 )
 

@@ -9,17 +9,13 @@ import (
 
 func main() {
 
-	url := "httpv://localhost:8000/helloworld"
-
+	url := "httpv://localhost:7999/helloworld"
 	_, pubkey, _ := httpv.FakeKey()
 	convo, err := httpv.Get(url, pubkey)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	verified, err := convo.Verify()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Did We verify? %v\n", verified)
+	v, err := convo.Verify()
+	fmt.Printf("Result: %v, %v\n=====\n%s\n", v, err, convo.RespBody())
 }

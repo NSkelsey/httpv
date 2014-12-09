@@ -1,11 +1,14 @@
 package httpv
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io/ioutil"
 
-	"github.com/NSkelsey/net/http"
+	"net/http"
+
 	"github.com/conformal/btcec"
 )
 
@@ -21,6 +24,8 @@ type Conversation struct {
 	pubkey     *btcec.PublicKey
 	hash       []byte
 	debug      bool
+	respBody   []byte
+	reqBody    []byte
 }
 
 func NewConversation(host string, pubkey *btcec.PublicKey, privkey *btcec.PrivateKey) Conversation {
@@ -56,6 +61,17 @@ func (c *Conversation) AddRequest(req http.Request) error {
 		ProtoMinor: req.ProtoMinor,
 		Header:     cleanHeader,
 	}
+
+	if req.Body != nil {
+		b, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			return err
+		}
+		c.reqBody = b
+	} else {
+		c.reqBody = []byte{}
+	}
+
 	if c.debug {
 		fmt.Printf("========\n%s\n=======\n", c.req)
 	}
@@ -65,22 +81,29 @@ func (c *Conversation) AddRequest(req http.Request) error {
 // Adds an http.Response to the conversation. The body and a select number of
 // headers are copied over to the request that is actually signed.
 func (c *Conversation) AddResponse(resp http.Response) error {
+	return c.AddResponseAssert(resp, false)
+}
+
+// Asserts that the headers in the pushed response are valid, along with updating
+// the conversation.
+func (c *Conversation) AddResponseAssert(resp http.Response, assert bool) error {
 	if c.resp != nil {
 		return errors.New("httpv: Conversation already has an initialized response!")
 	}
 
 	var header http.Header
 	var err error
-	if resp.Header.Get("Httpv-Sig") == "" {
+	if !assert {
 		// The server is adding a new response that needs headers added
 		header, err = respHeaders(resp.Header)
 		if err != nil {
 			return err
 		}
 	} else {
-		// This must be a client side response, assert that the headers are
-		// properly formed
-		if err = assertRespHeader(resp.Header); err != nil {
+		// This must be a client side response. Assert that the headers are
+		// properly formed.
+		err = assertRespHeader(resp.Header)
+		if err != nil {
 			return err
 		}
 		header = resp.Header
@@ -89,12 +112,22 @@ func (c *Conversation) AddResponse(resp http.Response) error {
 	c.resp = &http.Response{
 		Status:     resp.Status,
 		StatusCode: resp.StatusCode,
-		Proto:      resp.Proto,
+		Proto:      "HTTP/1.1",
 		ProtoMajor: resp.ProtoMajor,
-		ProtoMinor: resp.ProtoMinor,
+		ProtoMinor: 1,
 		Header:     header,
-		Body:       resp.Body,
 	}
+	if resp.Body != nil {
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		c.respBody = b
+	} else {
+		c.respBody = []byte{}
+	}
+
 	return nil
 }
 
@@ -107,7 +140,7 @@ func (c *Conversation) EmitResponse() (*http.Response, error) {
 	}
 
 	// Munge req and resp together
-	entire_conv, err := munge(c.req, c.resp)
+	entire_conv, err := c.grossMunge()
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +149,8 @@ func (c *Conversation) EmitResponse() (*http.Response, error) {
 	hash := sha256.Sum256(entire_conv)
 	c.hash = hash[:]
 	if c.debug {
-		fmt.Printf("%s\n", entire_conv)
+		fmt.Printf("\nbytes: %x\n", entire_conv)
+		fmt.Printf("%x\n", c.hash)
 	}
 
 	// Sign
@@ -144,25 +178,67 @@ func (c *Conversation) Verify() (bool, error) {
 		return false, err
 	}
 
-	// Remove sig from response
+	// Remove sig from response for the Sig verification, then add it back.
+	rawSig := c.resp.Header.Get("Httpv-Sig")
 	c.resp.Header.Del("Httpv-Sig")
+	defer c.resp.Header.Set("Httpv-Sig", rawSig)
 
 	// Munge conversation
-	entire_conv, err := munge(c.req, c.resp)
+	entire_conv, err := c.grossMunge()
 	if err != nil {
 		return false, err
-	}
-	if c.debug {
-		fmt.Printf("%s\n", entire_conv)
 	}
 
 	// Hash
 	hash := sha256.Sum256(entire_conv)
 	c.hash = hash[:]
 
+	if c.debug {
+		fmt.Printf("\nbytes: %x\n", entire_conv)
+		fmt.Printf("%x\n", c.hash)
+	}
+
 	// Verifiy the Sig
 	v := sig.Verify(c.hash, c.pubkey)
 	return v, nil
+}
+
+func (c *Conversation) grossMunge() ([]byte, error) {
+	empt := []byte{}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := c.req.Write(buf); err != nil {
+		return empt, err
+	}
+	buf.Write(c.reqBody)
+
+	if err := c.resp.Write(buf); err != nil {
+		return empt, err
+	}
+	buf.Write(c.respBody)
+
+	return buf.Bytes(), nil
+}
+
+// munges the request and the response together
+func munge(req *http.Request, resp *http.Response) ([]byte, error) {
+	empt := []byte{}
+
+	buf := bytes.NewBuffer([]byte{})
+
+	if err := req.Write(buf); err != nil {
+		return empt, err
+	}
+
+	if err := resp.Write(buf); err != nil {
+		return empt, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (c *Conversation) RespBody() []byte {
+	return c.respBody
 }
 
 func (c *Conversation) ReadFromFile() {

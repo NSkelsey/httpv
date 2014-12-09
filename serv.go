@@ -1,7 +1,6 @@
 package httpv
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -9,7 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/NSkelsey/net/http"
+	"net/http"
+
 	"github.com/conformal/btcec"
 )
 
@@ -64,23 +64,6 @@ func enforceReq(req http.Request) error {
 	}
 
 	return nil
-}
-
-// munges the request and the response together
-func munge(req *http.Request, resp *http.Response) ([]byte, error) {
-	empt := []byte{}
-
-	buf := bytes.NewBuffer([]byte{})
-
-	if err := req.Write(buf); err != nil {
-		return empt, err
-	}
-
-	if err := resp.Write(buf); err != nil {
-		return empt, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 func textSig(privkey btcec.PrivateKey, hash []byte) (string, error) {

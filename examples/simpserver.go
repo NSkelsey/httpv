@@ -6,9 +6,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 
 	"github.com/NSkelsey/httpv"
-	"github.com/NSkelsey/net/http"
 )
 
 func writeErr(w *bufio.Writer, err error) {

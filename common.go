@@ -91,6 +91,10 @@ func (c *Conversation) AddResponseAssert(resp http.Response, assert bool) error 
 		return errors.New("httpv: Conversation already has an initialized response!")
 	}
 
+	if c.debug {
+		fmt.Printf("%s\n", resp)
+	}
+
 	var header http.Header
 	var err error
 	if !assert {
@@ -102,6 +106,9 @@ func (c *Conversation) AddResponseAssert(resp http.Response, assert bool) error 
 	} else {
 		// This must be a client side response. Assert that the headers are
 		// properly formed.
+		if resp.StatusCode != 200 {
+			return errors.New("httpv: Response returned a " + resp.Status)
+		}
 		err = assertRespHeader(resp.Header)
 		if err != nil {
 			return err
@@ -201,6 +208,10 @@ func (c *Conversation) Verify() (bool, error) {
 	// Verifiy the Sig
 	v := sig.Verify(c.hash, c.pubkey)
 	return v, nil
+}
+
+func (c *Conversation) Bundle() ([]byte, error) {
+	return c.grossMunge()
 }
 
 func (c *Conversation) grossMunge() ([]byte, error) {

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/conformal/btcec"
 )
@@ -17,6 +18,7 @@ var (
 )
 
 type httpvTransport struct {
+	client *http.Client
 }
 
 type httpsvTransport struct {
@@ -25,7 +27,7 @@ type httpsvTransport struct {
 
 func (t *httpvTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.URL.Scheme = "http"
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := t.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +36,7 @@ func (t *httpvTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func (t *httpsvTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.URL.Scheme = "https"
-	resp, err := t.clien.Do(req)
+	resp, err := t.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +45,7 @@ func (t *httpsvTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func NewTransport() http.RoundTripper {
 
-	serverCert, err := ioutil.ReadFile("./cert.pem")
+	serverCert, err := ioutil.ReadFile("/home/ubuntu/workspace/httpv/examples/cert.pem")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,14 +60,15 @@ func NewTransport() http.RoundTripper {
 	tlscfg.BuildNameToCertificate()
 
 	trans := &http.Transport{
-		TLSClientConfig: tlscfg,
+		TLSClientConfig:       tlscfg,
+		ResponseHeaderTimeout: time.Second * 2,
 	}
 
 	httpClient := &http.Client{
 		Transport: trans,
 	}
 
-	trans.RegisterProtocol("httpv", &httpvTransport{})
+	trans.RegisterProtocol("httpv", &httpvTransport{client: httpClient})
 	trans.RegisterProtocol("httpsv", &httpsvTransport{client: httpClient})
 	return trans
 }

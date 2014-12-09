@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	url := "httpv://localhost:7999/helloworld"
+	url := "httpsv://localhost:7999/helloworld"
 	_, pubkey, _ := httpv.FakeKey()
 	convo, err := httpv.Get(url, pubkey)
 	if err != nil {
